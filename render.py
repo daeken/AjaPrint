@@ -19,7 +19,7 @@ frag = '''
 uniform float layer;
 uniform vec3 resolution;
 float distance_field(vec3 p) {
-	return min(max(-(length(p / vec3(4., 4., 1.) - vec3(5.5, 5.5, 5.1)) - 4.), length(p / vec3(4., 4., 1.) - vec3(5.5, 5.5, 5.1)) - 5.), length(p / vec3(4., 4., .5) - vec3(5.5, 5.5, 5.1)) - 3.);
+	return min(min(max(-(length(p / vec3(4., 4., 1.) - vec3(5.5, 5.5, 5.1)) - 4.), length(p / vec3(4., 4., 1.) - vec3(5.5, 5.5, 5.1)) - 4.8), length(p / vec3(4., 4., .5) - vec3(5.5, 5.5, 5.1)) - 3.), length(p / vec3(4., 4., .5) - vec3(2.5, 2.5, 2.1)) - 1.);
 }
 void main() {
 	vec3 p = vec3(gl_FragCoord.xy, layer) * resolution;

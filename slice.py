@@ -37,6 +37,10 @@ def remove_borders(data):
 				ranges[dim][1] -= 1
 			else:
 				break
+		if ranges[dim][0] > 0:
+			ranges[dim][0] -= 1
+		if ranges[dim][1] < dimensions[dim]:
+			ranges[dim][1] += 1
 
 	ranges = [[0, dimensions[0]], [0, dimensions[1]], [0, dimensions[2]]]
 	shorten(0, lambda i: data[i])
@@ -44,8 +48,12 @@ def remove_borders(data):
 	shorten(2, lambda i: data[:,:,i])
 	return data[ranges[0][0]:ranges[0][1], ranges[1][0]:ranges[1][1], ranges[2][0]:ranges[2][1]]
 
+# Should this work in 3d?
 def tag_distance(data):
-	return distance_transform_edt(data)
+	out = np.empty(data.shape)
+	for i in xrange(data.shape[0]):
+		out[i] = distance_transform_edt(data[i])
+	return out
 
 def find_shells(data):
 	shells = []
@@ -55,13 +63,24 @@ def find_shells(data):
 	for i in xrange(num_shells):
 		shell = np.copy(cutdown)
 		shell[shell > nozzle_pixels] = 0
-		shells.append(tag_distance(shell))
+		shells.append(shell)
 		cutdown -= nozzle_pixels - overlap
 		np.clip(cutdown, 0, np.inf, out=cutdown)
 	return cutdown, shells
 
-def print_shell(head, shell):
-	pass
+def split_features(data):
+	fdata, features = label(data)
+	out = []
+	for i in xrange(1, features+1):
+		isolated = np.copy(fdata)
+		isolated[isolated != i] = 0
+		out.append(distance_transform_edt(isolated))
+	return out
+
+def print_shell(head, layer, shell):
+	features = split_features(shell)
+	for i, feature in enumerate(features):
+		scipy.misc.imsave('shell_%i_%i.png' % (layer, i), feature)
 
 class PrintHead(object):
 	def __init__(self):
@@ -79,6 +98,7 @@ class PrintHead(object):
 	def extrudeTo(self, pos):
 		self.position = pos
 
+np.set_printoptions(threshold=np.nan)
 print 'Loading'
 dimensions, resolution, data = load()
 print 'Finding solids'
@@ -94,10 +114,4 @@ head = PrintHead()
 for layer in xrange(cutdown.shape[0]):
 	head.addLayer()
 	for shell in shells:
-		print_shell(head, shell[layer])
-print 'Outputting'
-np.set_printoptions(threshold=np.nan)
-#print data[data.shape[0]/2]
-for i, shell in enumerate(shells):
-	scipy.misc.imsave('shell%i.png' % i, shells[i][shells[i].shape[0]/2])
-scipy.misc.imsave('cutdown.png', cutdown[cutdown.shape[0]/2])
+		print_shell(head, layer, shell[layer])
