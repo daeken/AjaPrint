@@ -18,8 +18,15 @@ void main() {
 frag = '''
 uniform float layer;
 uniform vec3 resolution;
+float sphere(vec3 p, float r) {
+	return length(p) - r;
+}
+float box(vec3 p, vec3 b) {
+	vec3 d = abs(p) - b;
+	return min(max(max(d.x, d.y), d.z), 0.) + length(max(d, 0.));
+}
 float distance_field(vec3 p) {
-	return min(min(max(-(length(p / vec3(4., 4., 1.) - vec3(5.5, 5.5, 5.1)) - 4.), length(p / vec3(4., 4., 1.) - vec3(5.5, 5.5, 5.1)) - 4.8), length(p / vec3(4., 4., .5) - vec3(5.5, 5.5, 5.1)) - 3.), length(p / vec3(4., 4., .5) - vec3(2.5, 2.5, 2.1)) - 1.);
+	return max(-sphere(p - vec3(20., 20., 20.), 15.), box(p - vec3(20., 20., 15.), vec3(10., 10., 10.)));
 }
 void main() {
 	vec3 p = vec3(gl_FragCoord.xy, layer) * resolution;
@@ -29,7 +36,7 @@ void main() {
 
 width = 500
 height = 500
-layers = 100
+layers = 250
 
 x_res = .1 # mm
 y_res = .1
