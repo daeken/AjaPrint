@@ -82,6 +82,17 @@ def print_shell(head, layer, shell):
 	prad = int(nozzle_diameter / 2 / resolution[1] + 0.5)
 	def find_max_point(data):
 		return np.unravel_index(np.argmax(data, axis=None), data.shape)
+	def find_next_point(start):
+		for i in xrange(2, 24, 2):
+			corner = max(0, int(start[0]-prad*(i/3))), max(0, int(start[1]-prad*(i/3)))
+			idx = find_max_point(feature[
+				corner[0]:corner[0]+prad*i,
+				corner[1]:corner[1]+prad*i
+			])
+			idx = idx[0]+corner[0], idx[1]+corner[1]
+			if feature[idx] != 0:
+				break
+		return idx
 	def trace_from(start):
 		def erase(a, b):
 			step = 1/(prad*2)
@@ -94,13 +105,8 @@ def print_shell(head, layer, shell):
 		if feature[start] == 0:
 			return
 		head.moveTo(start)
-		while True:
-			corner = max(0, int(start[0]-prad*2)), max(0, int(start[1]-prad*2))
-			idx = find_max_point(feature[
-				corner[0]:corner[0]+prad*4,
-				corner[1]:corner[1]+prad*4
-			])
-			idx = idx[0]+corner[0], idx[1]+corner[1]
+		while np.count_nonzero(feature) != 0:
+			idx = find_next_point(start)
 			if feature[idx] == 0:
 				break
 			erase(start, idx)
