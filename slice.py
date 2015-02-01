@@ -3,11 +3,11 @@ import numpy as np
 from scipy.ndimage.measurements import label
 from scipy.ndimage.morphology import distance_transform_edt
 import scipy.misc
-import json
+import json, math, sys
 from matplotlib import pyplot as plt
 nozzle_diameter = .4 # mm
 outline_overlap = .1 # mm
-num_shells = 4
+num_shells = 2
 
 def load():
 	dimensions, resolution = json.load(file('layers/spec.json'))
@@ -80,38 +80,71 @@ def split_features(data):
 def print_shell(head, layer, shell):
 	features = split_features(shell)
 	for i, feature in enumerate(features):
-		scipy.misc.imsave('shell_%i_%i.png' % (layer, i), feature)
+		pass
 
 class PrintHead(object):
 	def __init__(self):
-		self.position = [0, 0]
-		self.layer = 0
+		self.pos = [0, 0, 0]
+		self.layer = None
 		self.layers = []
+
+	def gcode(self):
+		preamble = '''
+G21
+G90
+G1 F1500
+'''
+		return preamble.lstrip() + '\n'.join('\n'.join(layer) for layer in self.layers)
+
+	def linear(self, x=None, y=None, z=None, extrude=None, feedrate=None):
+		command = 'G1'
+		if x is not None and x != self.pos[0]:
+			command += ' X%f' % x
+			self.pos[0] = x
+		if y is not None and y != self.pos[1]:
+			command += ' Y%f' % y
+			self.pos[1] = y
+		if z is not None and z != self.pos[2]:
+			command += ' Z%f' % z
+			self.pos[2] = z
+		if extrude is not None:
+			command += ' E%f' % extrude
+		if feedrate is not None:
+			command += ' F%f' % feedrate
+		if command == 'G1':
+			return
+		self.layer.append(command)
 
 	def addLayer(self):
 		self.layers.append([])
 		self.layer = self.layers[-1]
+		self.linear(z=len(self.layers) * resolution[0])
+		self.moveTo(10, 5)
+		self.extrudeTo(30, 10)
 
-	def moveTo(self, pos):
-		self.position = pos
+	def moveTo(self, x, y):
+		self.linear(x=x, y=y)
 
-	def extrudeTo(self, pos):
-		self.position = pos
+	def extrudeTo(self, x, y):
+		filament = math.sqrt((self.pos[0]-x) ** 2 + (self.pos[1]-y) ** 2)
+		self.linear(x=x, y=y, extrude=filament)
 
 np.set_printoptions(threshold=np.nan)
-print 'Loading'
+print >>sys.stderr, 'Loading'
 dimensions, resolution, data = load()
-print 'Finding solids'
+print >>sys.stderr, 'Finding solids'
 data = find_solid(data)
-print 'Trimming fat'
+print >>sys.stderr, 'Trimming fat'
 data = remove_borders(data)
-print 'Tagging distance'
+print >>sys.stderr, 'Tagging distance'
 data = tag_distance(data)
-print 'Finding shells'
+print >>sys.stderr, 'Finding shells'
 cutdown, shells = find_shells(data)
-print 'Printing layers'
+print >>sys.stderr, 'Printing layers'
 head = PrintHead()
 for layer in xrange(cutdown.shape[0]):
 	head.addLayer()
 	for shell in shells:
 		print_shell(head, layer, shell[layer])
+print >>sys.stderr, 'Outputting GCode'
+print head.gcode()
