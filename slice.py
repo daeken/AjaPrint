@@ -9,11 +9,14 @@ from matplotlib import pyplot as plt
 nozzle_diameter = .4 # mm
 outline_overlap = .1 # mm
 num_shells = 2
+sparse_infill_amount = .5
 
 def load():
+	global prad
 	dimensions, resolution = json.load(file('layers/spec.json'))
 	dimensions = dimensions[2], dimensions[0], dimensions[1]
 	resolution = resolution[2], resolution[0], resolution[1]
+	prad = int(nozzle_diameter / 2 / resolution[1] + 0.5)
 	data = np.zeros(dimensions, np.int8)
 	
 	for i in xrange(dimensions[0]):
@@ -49,13 +52,8 @@ def remove_borders(data):
 	shorten(2, lambda i: data[:,:,i])
 	return data[ranges[0][0]:ranges[0][1], ranges[1][0]:ranges[1][1], ranges[2][0]:ranges[2][1]]
 
-# Should this work in 3d?
 def tag_distance(data):
 	return distance_transform_cdt(data)
-	out = np.empty(data.shape)
-	for i in xrange(data.shape[0]):
-		out[i] = distance_transform_edt(data[i])
-	return out
 
 def find_shells(data):
 	shells = []
@@ -79,14 +77,35 @@ def split_features(data):
 		out.append(distance_transform_edt(isolated))
 	return out
 
+def edist(a, b):
+	return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2)
+
+def erase_from(data, a, b):
+	dist = int(math.ceil(edist(a, b)))
+	if dist == 0:
+		dist = 1
+	step = 1/(dist*2)
+	for t in xrange(dist):
+		pos = (b[0]-a[0])*t*step+a[0], (b[1]-a[1])*t*step+a[1]
+		data[
+			max(0, pos[0]-prad):min(data.shape[0], pos[0]+prad),
+			max(0, pos[1]-prad):min(data.shape[1], pos[1]+prad)
+		] = 0
+
 def print_shell(head, layer, shell):
-	prad = int(nozzle_diameter / 2 / resolution[1] + 0.5)
-	def find_max_point(data):
-		return np.unravel_index(np.argmax(data, axis=None), data.shape)
+	def find_max_point(pos, data):
+		idxs = np.where(data == data.max())
+		mdist, idx = 10000, None
+		for i in xrange(len(idxs[0])):
+			loc = idxs[0][i], idxs[1][i]
+			tdist = edist(pos, loc)
+			if tdist < mdist:
+				mdist, idx = tdist, loc
+		return idx
 	def find_next_point(start):
 		for i in xrange(2, 24, 2):
 			corner = max(0, int(start[0]-prad*(i/3))), max(0, int(start[1]-prad*(i/3)))
-			idx = find_max_point(shell[
+			idx = find_max_point(start, shell[
 				corner[0]:corner[0]+prad*i,
 				corner[1]:corner[1]+prad*i
 			])
@@ -95,14 +114,6 @@ def print_shell(head, layer, shell):
 				break
 		return idx
 	def trace_from(start):
-		def erase(a, b):
-			step = 1/(prad*2)
-			for t in xrange(prad*2):
-				pos = (b[0]-a[0])*t*step+a[0], (b[1]-a[1])*t*step+a[1]
-				shell[
-					max(0, pos[0]-prad):min(shell.shape[0], pos[0]+prad),
-					max(0, pos[1]-prad):min(shell.shape[1], pos[1]+prad)
-				] = 0
 		if shell[start] == 0:
 			return
 		head.moveTo(start)
@@ -110,7 +121,7 @@ def print_shell(head, layer, shell):
 			idx = find_next_point(start)
 			if shell[idx] == 0:
 				break
-			erase(start, idx)
+			erase_from(shell, start, idx)
 			head.extrudeTo(idx)
 			start = idx
 	features = split_features(shell)
@@ -120,10 +131,17 @@ def print_shell(head, layer, shell):
 			while True:
 				if np.count_nonzero(shell) == 0:
 					break
-				trace_from(find_max_point(shell))
+				trace_from(find_max_point(head.pos, shell))
 		draw_infill(cutdown, layer % 2 == 0)
 
 def draw_infill(data, direction):
+	return
+	while np.count_nonzero(data) != 0:
+		features = split_features(data)
+		for feature in features:
+			pass
+
+def draw_sparse_infill(data, direction):
 	pass
 
 class PrintHead(object):
@@ -213,6 +231,6 @@ for layer in xrange(cutdown.shape[0]):
 	for shell in shells:
 		if np.count_nonzero(shell[layer]) != 0:
 			print_shell(head, layer, shell[layer])
-	draw_infill(cutdown, layer % 2 == 0)
+	draw_sparse_infill(cutdown, layer % 2 == 0)
 print >>sys.stderr, 'Outputting GCode'
 print head.gcode()
