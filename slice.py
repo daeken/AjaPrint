@@ -1,7 +1,7 @@
 from PIL import Image
 import numpy as np
 from scipy.ndimage.measurements import label
-from scipy.ndimage.morphology import distance_transform_edt
+from scipy.ndimage.morphology import distance_transform_cdt, distance_transform_edt
 from scipy.spatial import cKDTree
 import scipy.misc
 import json, math, sys
@@ -51,6 +51,7 @@ def remove_borders(data):
 
 # Should this work in 3d?
 def tag_distance(data):
+	return distance_transform_cdt(data)
 	out = np.empty(data.shape)
 	for i in xrange(data.shape[0]):
 		out[i] = distance_transform_edt(data[i])
@@ -85,12 +86,12 @@ def print_shell(head, layer, shell):
 	def find_next_point(start):
 		for i in xrange(2, 24, 2):
 			corner = max(0, int(start[0]-prad*(i/3))), max(0, int(start[1]-prad*(i/3)))
-			idx = find_max_point(feature[
+			idx = find_max_point(shell[
 				corner[0]:corner[0]+prad*i,
 				corner[1]:corner[1]+prad*i
 			])
 			idx = idx[0]+corner[0], idx[1]+corner[1]
-			if feature[idx] != 0:
+			if shell[idx] != 0:
 				break
 		return idx
 	def trace_from(start):
@@ -98,26 +99,32 @@ def print_shell(head, layer, shell):
 			step = 1/(prad*2)
 			for t in xrange(prad*2):
 				pos = (b[0]-a[0])*t*step+a[0], (b[1]-a[1])*t*step+a[1]
-				feature[
-					max(0, pos[0]-prad):min(feature.shape[0], pos[0]+prad),
-					max(0, pos[1]-prad):min(feature.shape[1], pos[1]+prad)
+				shell[
+					max(0, pos[0]-prad):min(shell.shape[0], pos[0]+prad),
+					max(0, pos[1]-prad):min(shell.shape[1], pos[1]+prad)
 				] = 0
-		if feature[start] == 0:
+		if shell[start] == 0:
 			return
 		head.moveTo(start)
-		while np.count_nonzero(feature) != 0:
+		while np.count_nonzero(shell) != 0:
 			idx = find_next_point(start)
-			if feature[idx] == 0:
+			if shell[idx] == 0:
 				break
 			erase(start, idx)
 			head.extrudeTo(idx)
 			start = idx
 	features = split_features(shell)
 	for feature in features:
-		while True:
-			trace_from(find_max_point(feature))
-			if np.count_nonzero(feature) == 0:
-				break
+		cutdown, shells = find_shells(feature)
+		for shell in shells:
+			while True:
+				if np.count_nonzero(shell) == 0:
+					break
+				trace_from(find_max_point(shell))
+		draw_infill(cutdown, layer % 2 == 0)
+
+def draw_infill(data, direction):
+	pass
 
 class PrintHead(object):
 	def __init__(self):
@@ -187,7 +194,7 @@ G90
 		filament = math.sqrt((self.pos[0]-x) ** 2 + (self.pos[1]-y) ** 2)
 		self.linear(x=x, y=y, extrude=filament, feedrate=6000)
 
-np.set_printoptions(threshold=np.nan)
+#np.set_printoptions(threshold=np.nan)
 print >>sys.stderr, 'Loading'
 dimensions, resolution, data = load()
 print >>sys.stderr, 'Finding solids'
@@ -204,6 +211,8 @@ for layer in xrange(cutdown.shape[0]):
 	print >>sys.stderr, '%i/%i' % (layer, cutdown.shape[0])
 	head.addLayer()
 	for shell in shells:
-		print_shell(head, layer, shell[layer])
+		if np.count_nonzero(shell[layer]) != 0:
+			print_shell(head, layer, shell[layer])
+	draw_infill(cutdown, layer % 2 == 0)
 print >>sys.stderr, 'Outputting GCode'
 print head.gcode()
